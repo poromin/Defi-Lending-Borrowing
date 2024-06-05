@@ -1,136 +1,162 @@
-const LARToken= artifacts.require('LARToken')
-const ADEToken= artifacts.require('ADE')
-const LendingAndBorrowing = artifacts.require('LendingAndBorrowing')
-const tools = require ("../scripts/helpful_scripts")
+const LARToken = artifacts.require('LARToken');
+const ADEToken = artifacts.require('ADE');
+const LendingAndBorrowing = artifacts.require('LendingAndBorrowing');
+const CreditScore = artifacts.require('CreditScore');
+const tools = require("../scripts/helpful_scripts");
 
-const KEPT_BALANCE = web3.utils.toWei("1000", "ether")
+const KEPT_BALANCE = web3.utils.toWei("1000", "ether");
+const MAX_RETRIES = 5;
+const DELAY = 120000; // 2 minutes
 
 const token_info = {
-    "dai_token": {"name": "DAI", "LTV": tools.toWei("0.8"), "borrow_stable_rate": tools.toWei("0.025")},
-    "weth_token": {"name": "WETH", "LTV": tools.toWei("0.75"), "borrow_stable_rate": tools.toWei("0.01")},
-    "link_token": {"name": "LINK", "LTV": tools.toWei("0.8"), "borrow_stable_rate": tools.toWei("0.05")},
-    "fau_token": {"name": "FAU", "LTV": tools.toWei("0.85"), "borrow_stable_rate": tools.toWei("0.009")},
-}
+    "dai_token": { "name": "DAI", "LTV": tools.toWei("0.8"), "borrow_stable_rate": tools.toWei("0.025") },
+    "weth_token": { "name": "WETH", "LTV": tools.toWei("0.75"), "borrow_stable_rate": tools.toWei("0.01") },
+    "link_token": { "name": "LINK", "LTV": tools.toWei("0.8"), "borrow_stable_rate": tools.toWei("0.05") },
+};
 
-module.exports = async function(deployer, network, accounts) {
+const sleep = (milliseconds) => {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+};
 
-    await deployer.deploy(LARToken)
-    await deployer.deploy(ADEToken)
-    const lar_token = await LARToken.deployed()
-    await deployer.deploy(LendingAndBorrowing,lar_token.address)
-    const lending_and_borrowing = await LendingAndBorrowing.deployed()
-
-    dai_token_address = await tools.get_contract("dai_token_address",network, deployer)
-    weth_token_address = await tools.get_contract("weth_token_address",network, deployer)
-    link_token_address = await tools.get_contract("link_token_address",network, deployer)
-    fau_token_address = await tools.get_contract("fau_token_address",network, deployer)
-
-    const token_to_price_feed = await addTokenToPriceFeed(network, deployer)
-
-    var total = await lar_token.totalSupply()
-    tx = await lar_token.transfer(lending_and_borrowing.address, BigInt(total) - BigInt(KEPT_BALANCE))
-
-    await add_token_to_price_feed_mapping(
-        lending_and_borrowing,
-        token_to_price_feed,
-        dai_token_address,
-        weth_token_address,
-        link_token_address,
-        fau_token_address
-    )
-
-    await addTokensToLend(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address, fau_token_address)
-
-    await addTokensToBorrow(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address, fau_token_address)
-}
-
-const addTokenToPriceFeed = async (network, deployer) => {
-    dai_usd_price_feed_address = await tools.get_contract("dai_usd_price_feed_address", network, deployer)
-    weth_usd_price_feed_address = await tools.get_contract("eth_usd_price_feed_address",network, deployer)
-    link_usd_price_feed_address = await tools.get_contract("link_usd_price_feed_address",network, deployer)
-    fau_usd_price_feed_address = await tools.get_contract("fau_usd_price_feed_address",network, deployer)
-
-    token_to_price_feed = {
-        0: dai_usd_price_feed_address,
-        1: weth_usd_price_feed_address,
-        2: link_usd_price_feed_address,
-        3: fau_usd_price_feed_address,
+const deployWithRetries = async (deployer, contract, ...args) => {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            await deployer.deploy(contract, ...args);
+            return contract.deployed();
+        } catch (error) {
+            console.error(`Deployment attempt ${attempt} failed for ${contract.contractName}:`, error);
+            if (attempt === MAX_RETRIES) {
+                throw error;
+            }
+            await sleep(DELAY);
+        }
     }
+};
 
-    return token_to_price_feed
-}
+const addTokenToPriceFeed = async (network, deployer, dai_token_address, weth_token_address, link_token_address) => {
+    const dai_usd_price_feed_address = await tools.get_contract("dai_usd_price_feed_address", network, deployer);
+    const weth_usd_price_feed_address = await tools.get_contract("eth_usd_price_feed_address", network, deployer);
+    const link_usd_price_feed_address = await tools.get_contract("link_usd_price_feed_address", network, deployer);
 
-const add_token_to_price_feed_mapping = async(lending_and_borrowing, token_to_price_feed, ...tokens) => {
-    for(token in tokens){
-        price_feed_address = token_to_price_feed[token]
-        tx = await lending_and_borrowing.addTokenToPriceFeedMapping(tokens[token], price_feed_address)
-      }
-}
+    const token_to_price_feed = {
+        [dai_token_address]: dai_usd_price_feed_address,
+        [weth_token_address]: weth_usd_price_feed_address,
+        [link_token_address]: link_usd_price_feed_address,
+    };
 
-const addTokensToLend = async(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address, fau_token_address) => {
-    tx1 = await lending_and_borrowing.addTokensForLending(
+    return token_to_price_feed;
+};
+
+const add_token_to_price_feed_mapping = async (lending_and_borrowing, token_to_price_feed, ...tokens) => {
+    for (const token of tokens) {
+        const price_feed_address = token_to_price_feed[token];
+        if (!price_feed_address) {
+            console.error(`Price feed address for token ${token} not found`);
+            continue;
+        }
+        await lending_and_borrowing.addTokenToPriceFeedMapping(token, price_feed_address);
+        console.log(`Added ${token} to price feed mapping`);
+    }
+};
+
+const addTokensToLend = async (lending_and_borrowing, dai_token_address, weth_token_address, link_token_address) => {
+    await lending_and_borrowing.addTokensForLending(
         token_info["dai_token"]["name"],
         dai_token_address,
         token_info["dai_token"]["LTV"],
         token_info["dai_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added DAI for lending");
 
-
-    tx2 = await lending_and_borrowing.addTokensForLending(
+    await lending_and_borrowing.addTokensForLending(
         token_info["weth_token"]["name"],
         weth_token_address,
         token_info["weth_token"]["LTV"],
         token_info["weth_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added WETH for lending");
 
-
-    tx3 = await lending_and_borrowing.addTokensForLending(
+    await lending_and_borrowing.addTokensForLending(
         token_info["link_token"]["name"],
         link_token_address,
         token_info["link_token"]["LTV"],
         token_info["link_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added LINK for lending");
+};
 
-
-    tx4 = await lending_and_borrowing.addTokensForLending(
-        token_info["fau_token"]["name"],
-        fau_token_address,
-        token_info["fau_token"]["LTV"],
-        token_info["fau_token"]["borrow_stable_rate"]
-    )
-
-  }
-
-const addTokensToBorrow = async(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address, fau_token_address)=>{
-    tx1 = await lending_and_borrowing.addTokensForBorrowing(
+const addTokensToBorrow = async (lending_and_borrowing, dai_token_address, weth_token_address, link_token_address) => {
+    await lending_and_borrowing.addTokensForBorrowing(
         token_info["dai_token"]["name"],
         dai_token_address,
         token_info["dai_token"]["LTV"],
         token_info["dai_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added DAI for borrowing");
 
-
-    tx2 = await lending_and_borrowing.addTokensForBorrowing(
+    await lending_and_borrowing.addTokensForBorrowing(
         token_info["weth_token"]["name"],
         weth_token_address,
         token_info["weth_token"]["LTV"],
         token_info["weth_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added WETH for borrowing");
 
-
-    tx3 = await lending_and_borrowing.addTokensForBorrowing(
+    await lending_and_borrowing.addTokensForBorrowing(
         token_info["link_token"]["name"],
         link_token_address,
         token_info["link_token"]["LTV"],
         token_info["link_token"]["borrow_stable_rate"]
-    )
+    );
+    console.log("Added LINK for borrowing");
+};
 
+module.exports = async function (deployer, network, accounts) {
+    try {
+        const lar_token = await deployWithRetries(deployer, LARToken);
+        console.log("LARToken deployed at", lar_token.address);
+        await sleep(DELAY);
 
-    tx4 = await lending_and_borrowing.addTokensForBorrowing(
-        token_info["fau_token"]["name"],
-        fau_token_address,
-        token_info["fau_token"]["LTV"],
-        token_info["fau_token"]["borrow_stable_rate"]
-    )
+        const ade_token = await deployWithRetries(deployer, ADEToken);
+        console.log("ADEToken deployed at", ade_token.address);
+        await sleep(DELAY);
 
-}
+        const credit_score = await deployWithRetries(deployer, CreditScore);
+        console.log("CreditScore deployed at", credit_score.address);
+        await sleep(DELAY);
+
+        const lending_and_borrowing = await deployWithRetries(deployer, LendingAndBorrowing, lar_token.address, credit_score.address);
+        console.log("LendingAndBorrowing deployed at", lending_and_borrowing.address);
+        await sleep(DELAY);
+
+        const dai_token_address = await tools.get_contract("dai_token_address", network, deployer);
+        const weth_token_address = await tools.get_contract("weth_token_address", network, deployer);
+        const link_token_address = await tools.get_contract("link_token_address", network, deployer);
+
+        const token_to_price_feed = await addTokenToPriceFeed(network, deployer, dai_token_address, weth_token_address, link_token_address);
+
+        const total = await lar_token.totalSupply();
+        await lar_token.transfer(lending_and_borrowing.address, BigInt(total) - BigInt(KEPT_BALANCE));
+        console.log("LARToken transferred to LendingAndBorrowing");
+        await sleep(DELAY);
+
+        await add_token_to_price_feed_mapping(
+            lending_and_borrowing,
+            token_to_price_feed,
+            dai_token_address,
+            weth_token_address,
+            link_token_address
+        );
+
+        await sleep(DELAY);
+
+        await addTokensToLend(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address);
+        await sleep(DELAY);
+
+        await addTokensToBorrow(lending_and_borrowing, dai_token_address, weth_token_address, link_token_address);
+
+        console.log("Deployment and setup complete");
+    } catch (error) {
+        console.error("Deployment failed with error:", error);
+    }
+};

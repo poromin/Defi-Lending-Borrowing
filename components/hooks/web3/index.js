@@ -1,8 +1,19 @@
+// index.js
 import { useHooks, useWeb3 } from "../../providers/web3";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
-const _isEmpty = (data) => {
+const { setWeb3Provider, getWeb3 } = require('/var/www/html/Defi-Lending-Borrowing/node_modules/@openzeppelin/test-helpers/src/config/web3.js');
+
+// Initialize the Web3 provider
+setWeb3Provider.default();
+
+// Get the Web3 instance
+const web3 = getWeb3();
+
+// Now you can use `web3` to interact with the Sepolia network
+
+const _isEmpty = (data) => { 
   return (
     data == null ||
     data === "" ||
@@ -12,11 +23,8 @@ const _isEmpty = (data) => {
 };
 
 const enhanceHook = (swrRes) => {
-
   const { data, error } = swrRes;
-
   const hasInitialResponse = data || error;
-
   return {
     ...swrRes,
     hasInitialResponse,
@@ -26,7 +34,7 @@ const enhanceHook = (swrRes) => {
 
 export const useAccount = () => {
   const swrRes = enhanceHook(useHooks((hooks) => hooks.useAccount)());
-
+  console.log("Data /web3/index.js:", swrRes.data);
   return {
     account: swrRes,
   };
@@ -34,7 +42,7 @@ export const useAccount = () => {
 
 export const useSupplyAssets = () => {
   const swrRes = enhanceHook(useHooks((hooks) => hooks.useSupplyAssets)());
-
+  console.log("Data /web3/index.js:", swrRes.data);
   return {
     tokens: swrRes,
   };
@@ -42,7 +50,6 @@ export const useSupplyAssets = () => {
 
 export const useBorrowAssets = () => {
   const swrRes = enhanceHook(useHooks((hooks) => hooks.useBorrowAssets)());
-
   return {
     tokensForBorrow: swrRes,
   };
@@ -50,7 +57,6 @@ export const useBorrowAssets = () => {
 
 export const useYourSupplies = () => {
   const swrRes = enhanceHook(useHooks((hooks) => hooks.useYourSupplies)());
-
   return {
     yourSupplies: swrRes,
   };
@@ -58,12 +64,10 @@ export const useYourSupplies = () => {
 
 export const useYourBorrows = () => {
   const swrRes = enhanceHook(useHooks((hooks) => hooks.useYourBorrows)());
-
   return {
     yourBorrows: swrRes,
   };
 };
-
 
 export const useAdmin = ({ redirectTo }) => {
   const { account } = useAccount();
@@ -78,7 +82,7 @@ export const useAdmin = ({ redirectTo }) => {
     ) {
       router.push(redirectTo);
     }
-  }, [account]);
+  }, [account, redirectTo, requireInstall, router]); // Đã thêm các dependencies còn thiếu
 
   return { account };
 };
@@ -89,7 +93,6 @@ export const useNetwork = () => {
     network: swrRes,
   };
 };
-
 
 export const useWalletInfo = () => {
   const { network } = useNetwork();
@@ -105,80 +108,3 @@ export const useWalletInfo = () => {
     isConnecting,
   };
 };
-
-/*
-
-Create an handler of the hook. This handler returns a function which is where the functionality of the hook is programmed.
-Register the handler in setUpHook()
-Here, Try to call the function the handler is returning.
-
-
-The reason for using enhanceHook is to provide an additional property 'hasInitialResponse' instead of specifying this property in all hooks.
-
-useHooks((hooks) => hooks.useAccount)() =
-{
-  account: {
-      mutate,
-      data,
-      isAdmin: (data && adminAddresses[web3.utils.keccak256(data)]) ?? false,
-      ...rest,
-  },
-}
-
-
-
-
-useHooks((hooks) => {
-        return hooks.useAccount
-    }
-    ) = createUseAccount(web3)
-
-return createUseAccount(web3)() =
-   {
-        account: {
-            mutate,
-            data,
-            isAdmin: (data && adminAddresses[web3.utils.keccak256(data)]) ?? false,
-            ...rest,
-        }
-    }
-
-
-Here, useHooks() method is called, which means that we will have access to that dictionary containing key-value pairs where the keys represent name of hooks and value represent an handler to that hook.
-
-Here, hooks is a variable that holds that dictionary.
-
-hooks = getHooks() = setUpHooks() =
-    {
-        useAccount: createUseAccount(web3)
-    }
-
-useAccount is the name of a hook and createUseAccount(web3) is an handler to that hook itself (note that the hook is a function)
-
-
-hooks.useAccount returns the handler to the hook. In other words,
-hooks.useAccount = createUseAccount(web3)
-
-createUseAccount(web3) is just an handler to the hook. It is a function that returns a function. That function it returns is actually the function we call hook.
-
-createUseAccount(web3) returns
-
-() =>
-    {
-        return
-        {
-            account: {
-                mutate,
-                data,
-                isAdmin: (data && adminAddresses[web3.utils.keccak256(data)]) ?? false,
-                ...rest,
-        }
-    }
-    }
-
-The function above is the one we actually need to invoke.
-
-So, createUseAccount(web3)() will invoke the function
-
-
-*/

@@ -1,24 +1,22 @@
-import { handler as createAccountHook } from "./useAccount"
-import { handler as createNetworkHook } from "./useNetwork"
-import {handler as createSupplyAssetsHook} from "./useSupplyAssets"
-import {handler as createBorrowAssetsHook} from "./useBorrowAssets"
-import {handler as createYourSuppliesHook} from "./useYourSupplies"
-import {handler as createYourBorrowsHook} from "./useYourBorrows"
+// setupHooks.js (Modified)
 
-export const setupHooks = ({web3, provider, contract}) => {
-    return {
-        useAccount: createAccountHook(web3, provider),
-        useNetwork: createNetworkHook(web3),
-        useSupplyAssets: createSupplyAssetsHook(web3, contract),
-        useBorrowAssets: createBorrowAssetsHook(web3, contract),
-        useYourSupplies: createYourSuppliesHook(web3, contract),
-        useYourBorrows: createYourBorrowsHook(web3, contract)
+import { useAccount } from "./useAccount";
+import { useNetwork } from "./useNetwork";
+import { useSupplyAssets } from "./useSupplyAssets";
+import { useBorrowAssets } from "./useBorrowAssets";
+import { useYourSupplies } from "./useYourSupplies";
+import { useYourBorrows } from "./useYourBorrows";
 
-        // useNetwork: createNetworkHook(web3),
-    }
-}
+export const setupHooks = ({ web3, provider, contract }) => {
+  // Call useAccount directly to get the account data
+  const { account } = useAccount();
 
-/*
-setUpHook function returns a dictionary where every key has a value that returns a function. In another words, every key has a hook
-
-*/
+  return {
+    useAccount: () => account, // Return a function that provides the account data
+    useNetwork: createNetworkHook(web3),
+    useSupplyAssets: createSupplyAssetsHook(web3, contract),
+    useBorrowAssets: createBorrowAssetsHook(web3, contract),
+    useYourSupplies: createYourSuppliesHook(web3, contract),
+    useYourBorrows: createYourBorrowsHook(web3, contract),
+  };
+};

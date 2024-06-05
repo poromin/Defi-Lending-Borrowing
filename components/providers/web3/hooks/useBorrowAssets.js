@@ -1,5 +1,7 @@
 import useSWR from "swr";
-import { normalizeToken } from "../../../../utils/normalize"
+import { normalizeToken } from "../../../../utils/normalize";
+import { useContext } from "react";
+import { Web3Context } from "../index"; // Assuming web3Context is in the parent directory
 
 const NETWORKS = {
   1: "Ethereum Main Network",
@@ -9,39 +11,47 @@ const NETWORKS = {
   42: "Kovan Test Network",
   56: "Binance Smart Chain",
   1337: "Ganache",
+  11155111: "Sepolia Test Network",
 };
 
-
-export const handler = (web3, contract) => () => {
+export const useBorrowAssets = () => {
+  const { web3, contract } = useContext(Web3Context);
 
   const { data, error, mutate, ...rest } = useSWR(
-    () => (web3 ? "web3/supply_assets" : null),
+    () => (web3 ? "web3/borrow_assets" : null),
     async () => {
-      const borrowAssets = []
-      const tokens = await contract.methods.getTokensForBorrowingArray().call()
-      for (let i = 0; i < tokens.length; i++){
-        const currentToken = tokens[i]
-
-        const newToken = await normalizeToken(web3, contract, currentToken)
-
-        borrowAssets.push(newToken)
-
-
+      if (!contract) {
+        throw new Error("Contract not initialized yet.");
       }
 
-      return borrowAssets
+      const borrowAssets = [];
+      const tokens = await contract.methods.getTokensForBorrowingArray().call();
+      for (let i = 0; i < tokens.length; i++) {
+        const currentToken = tokens[i];
+        const newToken = await normalizeToken(web3, contract, currentToken);
+        borrowAssets.push(newToken);
+      }
+
+      return borrowAssets;
+    },
+    {
+      revalidateOnFocus: false,
     }
   );
-
-  const targetNetwork = NETWORKS["42"];
-
-
+  if (error) {
+    return {
+      tokensForBorrow: undefined,
+      isLoading: false,
+      isError: true,
+      error,
+    };
+  }
   return {
-    data,
-    error,
+    tokensForBorrow: data,
+    isLoading: !error && !data,
+    isError: error,
+    mutate,
     ...rest,
-    target: targetNetwork,
-    isSupported: data === targetNetwork,
   };
 };
 

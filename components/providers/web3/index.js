@@ -1,91 +1,72 @@
-import { createContext, useContext, useState, useEffect, useMemo } from "react";
-import detectEthereumProvider from "@metamask/detect-provider";
-import Web3 from "web3";
-import { setupHooks } from "./hooks/setupHooks";
-import { loadContract } from "../../../utils/loadContract";
+// index.js
+import { useHooks } from "../../providers/web3";
+import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
+import { Web3Provider, useWeb3 } from "../../providers/web3"; // Import useWeb3
 
-const Web3Context = createContext(null);
+const { setWeb3Provider, getWeb3 } = require('/var/www/html/Defi-Lending-Borrowing/node_modules/@openzeppelin/test-helpers/src/config/web3.js');
 
-const setListeners = (provider) => {
-  provider.on("chainChanged", (_) => window.location.reload());
+// Initialize the Web3 provider
+setWeb3Provider.default();
+
+// Get the Web3 instance
+const web3 = getWeb3();
+
+// Now you can use `web3` to interact with the Sepolia network
+
+const _isEmpty = (data) => {
+  return (
+    data == null ||
+    data === "" ||
+    (Array.isArray(data) && data.length === 0) ||
+    (data.constructor === Object && Object.keys(data).length === 0)
+  );
 };
 
-export default function Web3Provider({ children }) {
-  const createWeb3State = ({ web3, provider, contract, isLoading }) => {
-    return {
-      web3,
-      provider,
-      contract,
-      isLoading,
-      hooks: setupHooks({ web3, provider, contract }),
-    };
+const enhanceHook = (swrRes) => {
+  const { data, error } = swrRes;
+  const hasInitialResponse = data || error;
+  return {
+    ...swrRes,
+    hasInitialResponse,
+    isEmpty: hasInitialResponse && _isEmpty(data),
   };
+};
 
-  const [web3Api, setWeb3Api] = useState(
-    createWeb3State({
-      web3: null,
-      provider: null,
-      contract: null,
-      isLoading: true,
-    })
-  );
+export const useAccount = () => {
+  const { web3 } = useWeb3(); // Get web3 from the context
+  const swrRes = enhanceHook(useHooks((hooks) => hooks.useAccount)(web3)); // Pass web3 to useHooks
+  console.log("Data /web3/index.js:", swrRes.data);
+  return {
+    account: swrRes,
+  };
+};
 
-  useEffect(() => {
-    const loadProvider = async () => {
-      const provider = await detectEthereumProvider();
-      if (provider) {
-        const web3 = new Web3(provider);
-        const contract = await loadContract("LendingAndBorrowing", web3);
-        setWeb3Api(
-          createWeb3State({ web3, provider, contract, isLoading: false })
-        );
-        setListeners(provider);
-      } else {
-        console.error("Please Install metamask");
-        setWeb3Api((prevWeb3Api) => ({ ...prevWeb3Api, isLoading: false }));
-      }
-    };
+// ... (other hooks remain the same)
 
-    loadProvider();
-  }, []);
+export const useWalletInfo = () => {
+  const { network } = useNetwork();
+  const { account } = useAccount();
+  const hasConnectedWallet = !!(account.data && network.isSupported);
+  const isConnecting =
+    !account.hasInitialResponse && !network.hasInitialResponse;
 
-  const _web3Api = useMemo(() => {
-    const { web3, provider, isLoading, contract } = web3Api;
+  return {
+    network,
+    account,
+    hasConnectedWallet,
+    isConnecting,
+  };
+};
 
-    return {
-      ...web3Api,
-      requireInstall: !isLoading && !web3,
-      connect: provider
-        ? async () => {
-            try {
-              console.log("Trying to connect to metamask");
-              await provider.request({
-                method: "eth_requestAccounts",
-              });
-            } catch {
-              console.error("Not connecting to metamask");
-              location.reload();
-            }
-          }
-        : () => console.log("Cannot find provider"),
-    };
-  }, [web3Api]);
-
-  // Return another instance of _web3Api if web3Api changes
-
+// Wrap the exported components with the Web3Provider
+export const App = ({ Component, pageProps }) => {
   return (
-    <Web3Context.Provider value={_web3Api}>{children}</Web3Context.Provider>
+    <Web3Provider web3={web3}> {/* Pass web3 to Web3Provider */}
+      <Component {...pageProps} />
+    </Web3Provider>
   );
-}
-
-export function useWeb3() {
-  return useContext(Web3Context);
-}
-
-export function useHooks(callback) {
-  const { hooks } = useWeb3();
-  return callback(hooks);
-}
+};
 
 /*
 

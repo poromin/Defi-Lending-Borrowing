@@ -1,6 +1,7 @@
 import RowSupplyAsset from "./RowSupplyAsset";
 import Skeleton from "./Skeleton";
 import SupplyRow from "./SupplyRow";
+import React from "react";
 
 export default function SupplyAsset({ tokens, children }) {
   return (

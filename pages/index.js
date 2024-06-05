@@ -1,24 +1,28 @@
+// pages/index.js
+"use client";
 import Link from "next/link";
-import Head from 'next/head'
-import Image from 'next/image'
+import Head from "next/head";
+import Image from "next/image";
+import React, { useState, useEffect } from "react";
+import { todp } from "../utils/todp";
 import {
   useAccount,
   useBorrowAssets,
   useNetwork,
   useSupplyAssets,
-  useYourBorrows,
   useYourSupplies,
+  useYourBorrows,
 } from "../components/hooks/web3";
 import { useWeb3 } from "../components/providers/web3";
-import { useEffect, useState } from "react";
 import eth from "../assets/eth.png";
 import ERC20 from "../abis/ADE.json";
 import LARToken from "../abis/LARToken.json";
 import { trackPromise } from "react-promise-tracker";
-import { todp } from "../utils/todp";
 import Navbar from "../components/ui/Navbar";
-import YourSupply from "../components/ui/YourSupplies";
+import YourSupplies from "../components/ui/YourSupplies";
 import YourBorrows from "../components/ui/YourBorrows";
+import BorrowRow from "../components/ui/BorrowRow";
+import SupplyRow from "../components/ui/SupplyRow";
 import SupplyAsset from "../components/ui/SupplyAssets";
 import BorrowAssets from "../components/ui/BorrowAssets";
 import Footer from "../components/ui/Footer";
@@ -28,49 +32,51 @@ import ModalRepay from "../components/ui/ModalRepay";
 import ModalBorrow from "../components/ui/ModalBorrow";
 import RowSupplyAsset from "../components/ui/RowSupplyAsset";
 import RowBorrowAsset from "../components/ui/RowBorrowAsset";
-import SupplyRow from "../components/ui/SupplyRow";
-import BorrowRow from "../components/ui/BorrowRow";
 
 export default function Home() {
-  const { network } = useNetwork();
-  const { requireInstall, isLoading, connect, contract, web3 } = useWeb3();
-  const { account } = useAccount();
-  const { tokens } = useSupplyAssets();
-  const { tokensForBorrow } = useBorrowAssets();
-  const { yourSupplies } = useYourSupplies();
-  const { yourBorrows } = useYourBorrows();
+  if (isLoading || isLoadingWeb3 || !web3 || !contract) {
+    return <div>Loading...</div>;
+  }
+  const { network, isLoading: isLoadingNetwork } = useNetwork(); 
+  const {
+    requireInstall,
+    isLoading: isLoadingWeb3,
+    connect,
+    contract,
+    web3,
+  } = useWeb3();
+  const { account, isLoading: isLoadingAccount } = useAccount();
+  const { tokens, isLoading: isLoadingSupplyAssets } = useSupplyAssets();
+  const { tokensForBorrow, isLoading: isLoadingBorrowAssets } =
+    useBorrowAssets();
+  const { yourSupplies, isLoading: isLoadingYourSupplies } = useYourSupplies();
+  const { yourBorrows, isLoading: isLoadingYourBorrows } = useYourBorrows();
 
-  const IMAGES = {
-    DAI:
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSllrF9PNBf88kIx9USP5g73XDYjkMyRBaDig&usqp=CAU",
-    WETH: "https://staging.aave.com/icons/tokens/weth.svg",
-    LINK: "https://staging.aave.com/icons/tokens/link.svg",
-    FAU:
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT5qUPi3Ar2dQZ2m9K5opr_h9QaQz4_G5HVYA&usqp=CAU",
-    LAR:
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSqZs8PLHRLaGd4QfIvOYmCg30svx5dHp0y6A&usqp=CAU",
-  };
-
+  const [ethBalance, setEthBalance] = useState(null);
   const [selectedTokenToSupply, setSelectedTokenToSupply] = useState(null);
   const [selectedTokenToBorrow, setSelectedTokenToBorrow] = useState(null);
   const [selectedTokenToWithdraw, setSelectedTokenToWithdraw] = useState(null);
   const [selectedTokenToRepay, setSelectedTokenToRepay] = useState(null);
-
   const [transactionHash, setTransactionHash] = useState(null);
   const [newSupply, setNewSupply] = useState(true);
 
   const [supplyError, setSupplyError] = useState(null);
   const [supplyResult, setSupplyResult] = useState(null);
-
   const [borrowingError, setBorrowingError] = useState(null);
   const [borrowingResult, setBorrowingResult] = useState(null);
-
   const [WithdrawError, setWithdrawError] = useState(null);
   const [WithdrawResult, setWithdrawResult] = useState(null);
-
   const [repayError, setRepayError] = useState(null);
   const [repayResult, setRepayResult] = useState(null);
 
+  const IMAGES = {
+    DAI: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSllrF9PNBf88kIx9USP5g73XDYjkMyRBaDig&usqp=CAU",
+    WETH: "https://staging.aave.com/icons/tokens/weth.svg",
+    LINK: "https://staging.aave.com/icons/tokens/link.svg",
+    LAR: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSqZs8PLHRLaGd4QfIvOYmCg30svx5dHp0y6A&usqp=CAU",
+  };
+
+  
   const toWei = (value) => {
     return web3.utils.toWei(value.toString());
   };
@@ -91,6 +97,7 @@ export default function Home() {
     setTransactionHash(null);
   };
 
+  
 
   const supplyToken = async (token, value) => {
     let NETWORK_ID = await web3.eth.net.getId();
@@ -149,7 +156,6 @@ export default function Home() {
     setWithdrawError(null);
     setWithdrawResult(null);
 
-
     try {
       const withdrawResult = await trackPromise(
         contract.methods
@@ -189,23 +195,21 @@ export default function Home() {
   };
 
   const addBorrowedToken = async (token) => {
-
     const tokenAddress = token.tokenAddress;
     const tokenSymbol = token.name;
     const tokenDecimals = token.decimals;
     const tokenImage = IMAGES[token.name];
 
     try {
-      // wasAdded is a boolean. Like any RPC method, an error may be thrown.
       const wasAdded = await ethereum.request({
         method: "wallet_watchAsset",
         params: {
-          type: "ERC20", // Initially only supports ERC20, but eventually more!
+          type: "ERC20",
           options: {
-            address: tokenAddress, // The address that the token is at.
-            symbol: tokenSymbol, // A ticker symbol or shorthand, up to 5 chars.
-            decimals: tokenDecimals, // The number of decimals in the token
-            image: tokenImage, // A string url of the token logo
+            address: tokenAddress,
+            symbol: tokenSymbol,
+            decimals: tokenDecimals,
+            image: tokenImage,
           },
         },
       });
@@ -215,8 +219,8 @@ export default function Home() {
       } else {
         // Not Added
       }
-    } catch (error) {
-      console.log(error);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -227,27 +231,26 @@ export default function Home() {
     const tokenImage = IMAGES[token.name];
 
     try {
-      // wasAdded is a boolean. Like any RPC method, an error may be thrown.
       const wasAdded = await ethereum.request({
         method: "wallet_watchAsset",
         params: {
-          type: "ERC20", // Initially only supports ERC20, but eventually more!
+          type: "ERC20",
           options: {
-            address: tokenAddress, // The address that the token is at.
-            symbol: tokenSymbol, // A ticker symbol or shorthand, up to 5 chars.
-            decimals: tokenDecimals, // The number of decimals in the token
-            image: tokenImage, // A string url of the token logo
+            address: tokenAddress,
+            symbol: tokenSymbol,
+            decimals: tokenDecimals,
+            image: tokenImage,
           },
         },
       });
 
       if (wasAdded) {
-     // Added
+        // Added
       } else {
         // Not Added
       }
-    } catch (error) {
-      console.log(error);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -264,16 +267,15 @@ export default function Home() {
     const tokenImage = IMAGES["LAR"];
 
     try {
-      // wasAdded is a boolean. Like any RPC method, an error may be thrown.
       const wasAdded = await ethereum.request({
         method: "wallet_watchAsset",
         params: {
-          type: "ERC20", // Initially only supports ERC20, but eventually more!
+          type: "ERC20",
           options: {
-            address: tokenAddress, // The address that the token is at.
-            symbol: tokenSymbol, // A ticker symbol or shorthand, up to 5 chars.
-            decimals: tokenDecimals, // The number of decimals in the token
-            image: tokenImage, // A string url of the token logo
+            address: tokenAddress,
+            symbol: tokenSymbol,
+            decimals: tokenDecimals,
+            image: tokenImage,
           },
         },
       });
@@ -283,12 +285,10 @@ export default function Home() {
       } else {
         // Not Added
       }
-    } catch (error) {
-      console.log(error);
+    } catch (err) {
+      console.error(err);
     }
   };
-
-
 
   return (
     <div>
@@ -302,16 +302,14 @@ export default function Home() {
               <div>Page is Loading</div>
             ) : (
               <div>
-                <div className="relative bg-gray-100 ">
+                <div className="relative bg-gray-100">
                   <Navbar accountAddress={account.data} />
-                  {/* Header */}
                   <div className="relative bg-gray-700 md:pt-32 pb-32 pt-12">
                     <div className="px-1 md:px-10 mx-auto w-full">
                       <div>
-                        {/* Card stats */}
                         <div className="flex flex-wrap">
                           <div className="w-full px-2">
-                            <div className="relative flex sm:flex-row sm:mt-0 mt-6 flex-col xl:w-5/12 min-w-0 p-3 rounded mb-6 xl:mb-0 ">
+                            <div className="relative flex sm:flex-row sm:mt-0 mt-6 flex-col xl:w-5/12 min-w-0 p-3 rounded mb-6 xl:mb-0">
                               <div className="flex items-center">
                                 <Image
                                   src={eth}
@@ -323,19 +321,28 @@ export default function Home() {
                                 />
 
                                 <div className="">
-                                    {network.data === "Kovan Test Network"
-                                    ?<div className="text-2xl sm:text-2xl text- ml-2 text-white font-bold">Ethereum Kovan Market</div>
-                                    :  (<><div className="bg-red-500 p-2 text-sm rounded-md text-white">Connected to the Wrong network</div>
-                                    <div className="text-2xl sm:text-2xl text- ml-2 text-white font-bold">Switch to Kovan</div></>)
-                                    }
+                                  {network.data === "Sepolia Test Network" ? (
+                                    <div className="text-2xl sm:text-2xl text- ml-2 text-white font-bold">
+                                      Sepolia Test Network
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="bg-red-500 p-2 text-sm rounded-md text-white">
+                                        Connected to the Wrong network
+                                      </div>
+                                      <div className="text-2xl sm:text-2xl text- ml-2 text-white font-bold">
+                                        Switch to Sepolia
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex mt-2">
                                 <div className="flex pt-2 sm:ml-6 items-center">
-                                  <div className=" h-9">
+                                  <div className="h-9">
                                     <svg
                                       xmlns="http://www.w3.org/2000/svg"
-                                      className="h-10 w-910"
+                                      className="h-10 w-10"
                                       fill="none"
                                       viewBox="0 0 24 24"
                                       stroke="white"
@@ -348,7 +355,7 @@ export default function Home() {
                                       />
                                     </svg>
                                   </div>
-                                  <div className=" ml-2">
+                                  <div className="ml-2">
                                     <div className="text-sm text-white">
                                       Networth{" "}
                                       <p className="font-bold text-xl">
@@ -378,9 +385,10 @@ export default function Home() {
                     <div className="flex flex-wrap mt-4">
                       <div className="w-full xl:w-6/12 xl:mb-0 px-2">
                         {yourSupplies && (
-                          <YourSupply
+                          <YourSupplies
                             tokens={yourSupplies.data?.yourSupplies}
                             balance={yourSupplies.data?.yourBalance}
+                            account={account.data}
                           >
                             {(token) => {
                               return (
@@ -414,7 +422,7 @@ export default function Home() {
                                 />
                               );
                             }}
-                          </YourSupply>
+                          </YourSupplies>
                         )}
                       </div>
                       <div className="w-full xl:w-6/12 px-2">
@@ -496,7 +504,6 @@ export default function Home() {
                                             totalSuppliedInContract: JSON.stringify(
                                               token.totalSuppliedInContract
                                             ),
-
                                             userTokenBorrowedAmount: JSON.stringify(
                                               token.userTokenBorrowedAmount
                                             ),
@@ -509,7 +516,6 @@ export default function Home() {
                                             userTotalSupplyBalance:
                                               yourSupplies.data?.yourBalance,
                                           },
-                                          // the data
                                         }}
                                         as={`/reserve-overview/${token.name}`}
                                       >
@@ -575,7 +581,6 @@ export default function Home() {
                                           userTotalSupplyBalance:
                                             yourSupplies.data?.yourBalance,
                                         },
-                                        // the data
                                       }}
                                       as={`/reserve-overview/${token.name}`}
                                     >
@@ -593,7 +598,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                     <Footer />
+                    <Footer />
                   </div>
                 </div>
               </div>
@@ -605,7 +610,12 @@ export default function Home() {
           </>
         ) : requireInstall ? (
           <div className="w-full grid h-screen place-items-center bg-black text-white">
-            <button onClick={() => {window.open('https://metamask.io/download/', '_blank')}} className="border border-white p-2 rounded-md">
+            <button
+              onClick={() => {
+                window.open("https://metamask.io/download/", "_blank");
+              }}
+              className="border border-white p-2 rounded-md"
+            >
               Install metamask
             </button>
           </div>

@@ -1,5 +1,7 @@
 import useSWR from "swr";
-import { normalizeToken } from "../../../../utils/normalize"
+import { normalizeToken } from "../../../../utils/normalize";
+import { useContext } from "react";
+import { Web3Context } from "../index";
 
 const NETWORKS = {
   1: "Ethereum Main Network",
@@ -9,43 +11,47 @@ const NETWORKS = {
   42: "Kovan Test Network",
   56: "Binance Smart Chain",
   1337: "Ganache",
+  11155111: "Sepolia Test Network",
 };
 
-
-export const handler = (web3, contract) => () => {
-
+export const useSupplyAssets = () => {
+  const { web3, contract } = useContext(Web3Context);
 
   const { data, error, mutate, ...rest } = useSWR(
     () => (web3 ? "web3/supply_assets" : null),
     async () => {
-
-      const supplyAssets = []
-
-      const tokens = await contract.methods.getTokensForLendingArray().call()
-
-      for (let i = 0; i < tokens.length; i++){
-        const currentToken = tokens[i]
-
-        const newToken = await normalizeToken(web3, contract, currentToken)
-
-        supplyAssets.push(newToken)
-
-
+      if (!contract) {
+        throw new Error("Contract not initialized yet.");
       }
-
-      return supplyAssets
+      const supplyAssets = [];
+      const tokens = await contract.methods.getTokensForLendingArray().call();
+      for (let i = 0; i < tokens.length; i++) {
+        const currentToken = tokens[i];
+        const newToken = await normalizeToken(web3, contract, currentToken);
+        supplyAssets.push(newToken);
+      }
+      return supplyAssets;
+    },
+    {
+      revalidateOnFocus: false,
     }
   );
-
-  const targetNetwork = NETWORKS["42"];
-
-
+  
+  // Xử lý lỗi và trả về kết quả
+  if (error) {
+    return {
+      tokens: undefined,
+      isLoading: false,
+      isError: true,
+      error,
+    };
+  }
   return {
-    data,
-    error,
+    tokens: data,
+    isLoading: !error && !data,
+    isError: error,
+    mutate,
     ...rest,
-    target: targetNetwork,
-    isSupported: data === targetNetwork,
   };
 };
 
